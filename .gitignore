@@ -1,0 +1,33 @@
+# General
+.DS_Store
+Thumbs.db
+node_modules/
+*.log
+.env
+.env.local
+.env.*.local
+
+# Root-level build caches
+.turbo/
+.parcel-cache/
+
+# Backend (Hardhat)
+backend/artifacts/
+backend/cache/
+backend/coverage/
+backend/coverage.json
+backend/dist/
+backend/fhevmTemp/
+backend/types/
+
+# Frontend (Next.js)
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/.eslintcache
+
+# Frontend generated ABI
+frontend/abi/AskAnonABI.ts
+frontend/abi/AskAnonAddresses.ts
+
+
