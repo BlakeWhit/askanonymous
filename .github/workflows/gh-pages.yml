@@ -1,0 +1,155 @@
+name: Deploy static site to GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Derive BASE_PATH from repo name
+        id: basepath
+        shell: bash
+        run: |
+          REPO="${GITHUB_REPOSITORY#*/}"
+          OWNER="${GITHUB_REPOSITORY%/*}"
+          if [ "$REPO" = "$OWNER.github.io" ]; then
+            echo "BASE_PATH=" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_BASE_PATH=" >> "$GITHUB_ENV"
+            echo "basepath=" >> "$GITHUB_OUTPUT"
+          else
+            echo "BASE_PATH=/$REPO" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_BASE_PATH=/$REPO" >> "$GITHUB_ENV"
+            echo "basepath=/$REPO" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies (frontend)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Generate ABI if backend artifacts or deployments exist
+        working-directory: frontend
+        shell: bash
+        run: |
+          if [ -f "../backend/deployments/sepolia/AskAnon.json" ] || [ -f "../backend/artifacts/contracts/AskAnon.sol/AskAnon.json" ]; then
+            npm run genabi
+          else
+            echo "Skip genabi: no backend artifacts/deployments found"
+          fi
+
+      - name: Build static site
+        working-directory: frontend
+        env:
+          BASE_PATH: ${{ steps.basepath.outputs.basepath }}
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.basepath.outputs.basepath }}
+        run: npm run build
+
+      - name: Add .nojekyll to allow files starting with underscore
+        run: |
+          touch frontend/out/.nojekyll
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Let Next.js config auto-derive basePath via GITHUB_REPOSITORY
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      # Ensure Next static export produces proper paths
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Export static site
+        working-directory: frontend
+        run: npx next export
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Next export output directory
+          path: frontend/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
